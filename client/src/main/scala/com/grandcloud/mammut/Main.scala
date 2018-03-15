@@ -96,7 +96,7 @@ object Main extends App {
       case _ if line.startsWith("register ") =>
         Future.successful(println("registering...."))
           .flatMap(_ => register(line.replaceFirst("^register\\s+", "")))
-          .flatMap(creds => loop(Some(creds)))
+          .flatMap(c => loop(Some(c)))
       case _ if line.startsWith("post ") =>
         Future(println("post...."))
           .flatMap(_ => creds.map(c => send(c, line.replaceFirst("^post\\s+", ""))).getOrElse(Future.successful(())))
