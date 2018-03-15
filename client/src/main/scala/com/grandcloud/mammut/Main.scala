@@ -34,7 +34,7 @@ case class Credentials(name: String, pair: KeyPair) {
 }
 
 object Main extends App {
-  val channel = ManagedChannelBuilder.forAddress("localhost", 9990).build
+  val channel = ManagedChannelBuilder.forAddress("localhost", 9990).usePlaintext(true).build
   val stub =  MammutGrpc.stub(channel)
   val map = mutable.Map.empty[String, PublicKey]
 
