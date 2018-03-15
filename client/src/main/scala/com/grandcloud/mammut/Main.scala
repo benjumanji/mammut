@@ -103,6 +103,8 @@ object Main extends App {
           .flatMap(_ => loop(creds))
       case _ if line.startsWith("follow ") =>
         Future(println("following...."))
+          .flatMap(_ => follow(line.replaceFirst("^follow\\s+", "")))
+          .flatMap(_ => loop(creds))
       case "quit" => Future.successful(println("quit"))
     }
   }
