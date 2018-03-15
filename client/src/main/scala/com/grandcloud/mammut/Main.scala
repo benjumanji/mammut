@@ -26,7 +26,7 @@ import scala.util.Try
 
 case class Credentials(name: String, pair: KeyPair) {
   def sign(msg: String): ByteString = {
-    val signature = Signature.getInstance("ECDSA")
+    val signature = Signature.getInstance("SHA256withECDSA")
     signature.initSign(pair.getPrivate)
     signature.update(msg.getBytes(UTF_8))
     ByteString.copyFrom(signature.sign)
@@ -39,7 +39,7 @@ object Main extends App {
   val map = mutable.Map.empty[String, PublicKey]
 
   val provider = new BouncyCastleProvider()
-  val generator = KeyPairGenerator.getInstance("ECDSA", provider)
+  val generator = KeyPairGenerator.getInstance("EC", provider)
   val spec = ECNamedCurveTable.getParameterSpec("secp256k1")
   generator.initialize(spec)
 
@@ -59,13 +59,13 @@ object Main extends App {
 
   def keyFor(name: String): Future[PublicKey] = {
     stub.getPublicKey(PublicKeyRequest(name)).map { rep =>
-      val factory = KeyFactory.getInstance("ECDSA", provider)    
+      val factory = KeyFactory.getInstance("EC", provider)
       factory.generatePublic(new X509EncodedKeySpec(rep.publicKey.toByteArray))
     }
   }
 
   def verify(key: PublicKey, msg: String, sig: Array[Byte]): Boolean = {
-    val signature = Signature.getInstance("ECDSA")
+    val signature = Signature.getInstance("SHA256withECDSA")
     signature.initVerify(key)
     signature.update(msg.getBytes(UTF_8))
     signature.verify(sig)
