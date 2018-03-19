@@ -4,7 +4,7 @@ import com.google.protobuf.ByteString
 import com.google.protobuf.empty.Empty
 
 
-import io.grpc.stub.StreamObserver
+import io.grpc.stub.{ ServerCallStreamObserver, StreamObserver }
 import io.grpc.{
   Server,
   ServerBuilder,
@@ -53,7 +53,8 @@ class Service extends MammutGrpc.Mammut {
   def sendMessage(request: SendMessageRequest): Future[Empty] = {
     messages.compute(request.name, (k, v) => {
       Option(v).map { case (observers, messages) =>
-        observers.foreach { observer =>
+        val alive = observers.filterNot(_.asInstanceOf[ServerCallStreamObserver[_]].isCancelled)
+        alive.foreach { observer =>
           observer.onNext(FollowResponse(request.name, request.msg, request.signature))
         }
         (alive, messages :+ ((request.msg, request.signature)))
