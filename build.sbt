@@ -22,11 +22,13 @@ lazy val `protocol` =
     .settings(
       PB.targets.in(Compile) := Seq(scalapb.gen(flatPackage = true) -> sourceManaged.in(Compile).value),
       libraryDependencies ++= Seq(
-        "com.trueaccord.scalapb" %% "scalapb-runtime"                       % SpbVersion.scalapbVersion % "protobuf",
-        "com.trueaccord.scalapb" %% "scalapb-runtime-grpc"                  % SpbVersion.scalapbVersion,
-        "io.grpc"                %  "grpc-netty"                            % SpbVersion.grpcJavaVersion,
-        "io.monix"               %% "monix"                                 % "2.3.3",
-        "org.bouncycastle"       %  "bcprov-jdk15on"                        % "1.59"
+        "ch.qos.logback"             %  "logback-classic"                       % "1.2.3",
+        "com.trueaccord.scalapb"     %% "scalapb-runtime"                       % SpbVersion.scalapbVersion % "protobuf",
+        "com.trueaccord.scalapb"     %% "scalapb-runtime-grpc"                  % SpbVersion.scalapbVersion,
+        "com.typesafe.scala-logging" %% "scala-logging"                         % "3.8.0",
+        "io.grpc"                    %  "grpc-netty"                            % SpbVersion.grpcJavaVersion,
+        "io.monix"                   %% "monix"                                 % "2.3.3",
+        "org.bouncycastle"           %  "bcprov-jdk15on"                        % "1.59"
       )
     )
 

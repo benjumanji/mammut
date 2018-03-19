@@ -1,11 +1,16 @@
 package com.grandcloud.mammut
 
+import com.typesafe.scalalogging.StrictLogging
 import com.google.protobuf.ByteString
+
 import java.security.PublicKey
+
 import io.grpc.{ Status, StatusRuntimeException }
 import io.grpc.stub.{ ClientCallStreamObserver, ClientResponseObserver }
+
 import monix.eval.Task
 import monix.execution.Cancelable
+
 import scala.io.{ AnsiColor => AC }
 import scala.util.Try
 import scala.util.control.{ NonFatal, NoStackTrace }
@@ -34,7 +39,7 @@ case class InitEnv(stub: MammutGrpc.MammutStub) {
 
 case class AuthEnv(stub: MammutGrpc.MammutStub, creds: Credentials)
 
-object Cli {
+object Cli extends StrictLogging {
   def apply(env: InitEnv): Resumable  = {
     println("[r]egister")
     Prompt { line =>
@@ -111,7 +116,7 @@ object Cli {
           def onError(ex: Throwable): Unit = {
             ex match {
               case StatusCancelled(_) => ()
-              case NonFatal(t) => println(t)
+              case NonFatal(t) => logger.error(s"Error while following $name", t)
             }
           }
           def onNext(response: FollowResponse): Unit = {
