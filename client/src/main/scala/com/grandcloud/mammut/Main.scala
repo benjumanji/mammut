@@ -9,7 +9,6 @@ import java.security.KeyPair
 import java.security.PublicKey
 import java.security.Security
 import java.security.Signature
-import java.nio.charset.StandardCharsets.UTF_8
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 
@@ -24,7 +23,7 @@ case class Credentials(name: String, pair: KeyPair) {
   def sign(msg: String): ByteString = {
     val signature = Signature.getInstance("SHA256withECDSA")
     signature.initSign(pair.getPrivate)
-    signature.update(msg.getBytes(UTF_8))
+    signature.update(msg.`utf-8`)
     ByteString.copyFrom(signature.sign)
   }
 }
@@ -64,7 +63,7 @@ object Main extends App {
         def onCompleted(): Unit = promise.success(())
         def onError(ex: Throwable): Unit = promise.failure(ex)
         def onNext(response: FollowResponse): Unit = {
-          if (!Crypto.verify(key, response.msg.getBytes(UTF_8), response.signature.toByteArray))
+          if (!Crypto.verify(key, response.msg.`utf-8`, response.signature.toByteArray))
             throw new Exception(s"$name did not sign ${response.msg}")
           println(response.msg)
         }
