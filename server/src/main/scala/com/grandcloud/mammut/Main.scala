@@ -56,7 +56,7 @@ class Service extends MammutGrpc.Mammut {
         observers.foreach { observer =>
           observer.onNext(FollowResponse(request.name, request.msg, request.signature))
         }
-        (observers, messages :+ (request.msg, request.signature))
+        (alive, messages :+ ((request.msg, request.signature)))
       }
       .getOrElse((Seq.empty, Seq((request.msg, request.signature))))
     })
