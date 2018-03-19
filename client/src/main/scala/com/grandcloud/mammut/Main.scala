@@ -5,16 +5,12 @@ import com.google.protobuf.ByteString
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
 
-import java.security.KeyFactory
 import java.security.KeyPair
-import java.security.KeyPairGenerator
 import java.security.PublicKey
+import java.security.Security
 import java.security.Signature
-import java.security.spec.X509EncodedKeySpec
 import java.nio.charset.StandardCharsets.UTF_8
 
-import org.bouncycastle.jce.ECNamedCurveTable
-import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 import scala.collection.mutable
@@ -39,14 +35,11 @@ object Main extends App {
   val map = mutable.Map.empty[String, PublicKey]
 
   val provider = new BouncyCastleProvider()
-  val generator = KeyPairGenerator.getInstance("EC", provider)
-  val spec = ECNamedCurveTable.getParameterSpec("secp256k1")
-  generator.initialize(spec)
+  Security.addProvider(provider)
 
   def register(name: String): Future[Credentials] = {
-    val pair = generator.generateKeyPair()
+    val pair = Crypto.freshKeys
     val public = pair.getPublic
-    val priv = pair.getPrivate
     val request = RegisterNameRequest(name, ByteString.copyFrom(public.getEncoded))
     stub.registerName(request).map(_ => Credentials(name, pair))
   }
@@ -59,16 +52,8 @@ object Main extends App {
 
   def keyFor(name: String): Future[PublicKey] = {
     stub.getPublicKey(PublicKeyRequest(name)).map { rep =>
-      val factory = KeyFactory.getInstance("EC", provider)
-      factory.generatePublic(new X509EncodedKeySpec(rep.publicKey.toByteArray))
+      Crypto.decodePublicKey(rep.publicKey.toByteArray)
     }
-  }
-
-  def verify(key: PublicKey, msg: String, sig: Array[Byte]): Boolean = {
-    val signature = Signature.getInstance("SHA256withECDSA")
-    signature.initVerify(key)
-    signature.update(msg.getBytes(UTF_8))
-    signature.verify(sig)
   }
 
   def follow(name: String): Future[Unit] = {
@@ -79,7 +64,7 @@ object Main extends App {
         def onCompleted(): Unit = promise.success(())
         def onError(ex: Throwable): Unit = promise.failure(ex)
         def onNext(response: FollowResponse): Unit = {
-          if (!verify(key, response.msg, response.signature.toByteArray))
+          if (!Crypto.verify(key, response.msg.getBytes(UTF_8), response.signature.toByteArray))
             throw new Exception(s"$name did not sign ${response.msg}")
           println(response.msg)
         }
