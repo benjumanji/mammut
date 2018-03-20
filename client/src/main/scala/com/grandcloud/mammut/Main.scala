@@ -1,6 +1,7 @@
 package com.grandcloud.mammut
 
 import com.google.protobuf.ByteString
+import com.grandcloud.mammut.protobuf.MammutGrpc
 
 import io.grpc.ManagedChannelBuilder
 
@@ -17,10 +18,10 @@ import scala.concurrent.duration.Duration
 import scala.io.StdIn
 
 case class Credentials(name: String, pair: KeyPair) {
-  def sign(msg: String): ByteString = {
+  def sign(msg: Array[Byte]): ByteString = {
     val signature = Signature.getInstance("SHA256withECDSA")
     signature.initSign(pair.getPrivate)
-    signature.update(msg.`utf-8`)
+    signature.update(msg)
     ByteString.copyFrom(signature.sign)
   }
 }

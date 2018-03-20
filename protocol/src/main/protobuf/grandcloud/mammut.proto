@@ -1,42 +1,59 @@
 syntax = "proto3";
 
-package com.grandcloud.mammut;
+package com.grandcloud.mammut.protobuf;
 
 import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
 
-message RegisterNameRequest {
+message User {
   string name = 1;
   bytes public_key = 2;
+  bytes encrypted_private_key = 3;
+  bytes salt = 4;
 }
 
-message SendMessageRequest {
+message Post {
   string name = 1;
   string msg = 2;
   bytes signature = 3;
 }
 
-message PublicKeyRequest {
+message Follow {
   string name = 1;
+  string follower = 2;
+  string followee = 3;
+  bytes follower_sig = 4;
 }
 
-message PublicKeyResponse {
-  string name = 1;
-  bytes public_key = 2;
+message CreateUserRequest {
+  User user = 1;
 }
 
-message FollowRequest {
-  string name = 1;
+message GetUserRequest {
+  User user = 1;
+  google.protobuf.FieldMask mask = 2;  
 }
 
-message FollowResponse {
-  string name = 1;
-  string msg = 2;
-  bytes signature = 3; 
+message GetUserResponse {
+  User user = 1;
+}
+
+message CreatePostRequest {
+  Post post = 1;
+}
+
+message StreamPostsRequest {
+  User user = 1;
+}
+
+message CreateFollowRequest {
+  Follow follow = 1;
 }
 
 service Mammut {
-  rpc GetPublicKey(PublicKeyRequest) returns (PublicKeyResponse);
-  rpc RegisterName(RegisterNameRequest) returns (google.protobuf.Empty);
-  rpc SendMessage(SendMessageRequest) returns (google.protobuf.Empty);
-  rpc Follow(FollowRequest) returns (stream FollowResponse);
+  rpc CreateUser(CreateUserRequest) returns (google.protobuf.Empty);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc CreatePost(CreatePostRequest) returns (google.protobuf.Empty);
+  rpc StreamPosts(StreamPostsRequest) returns (stream Post);
+  rpc CreateFollow(CreateFollowRequest) returns (google.protobuf.Empty);
 }

@@ -1,15 +1,15 @@
 package com.grandcloud.mammut
 
+import com.grandcloud.mammut.protobuf._
 import com.typesafe.scalalogging.StrictLogging
 import com.google.protobuf.ByteString
-
-import java.security.PublicKey
 
 import io.grpc.{ Status, StatusRuntimeException }
 import io.grpc.stub.{ ClientCallStreamObserver, ClientResponseObserver }
 
 import monix.eval.Task
 import monix.execution.Cancelable
+import monix.execution.Scheduler.Implicits.global
 
 import scala.io.{ AnsiColor => AC }
 import scala.util.Try
@@ -41,7 +41,7 @@ case class AuthEnv(stub: MammutGrpc.MammutStub, creds: Credentials)
 
 object Cli extends StrictLogging {
   def apply(env: InitEnv): Resumable  = {
-    println("[r]egister")
+    println("available commands: [r]egister")
     Prompt { line =>
       line.replaceAll("\\s+", "") match {
         case "" => { unrecognised; Task(apply(env)) }
@@ -60,9 +60,9 @@ object Cli extends StrictLogging {
         case _ if (name.exists(_ == 0.toChar)) => { println("User name contains null"); registerUser(env) }
         case _ => {
           val keys = Crypto.freshKeys
-          val request = RegisterNameRequest(name, ByteString.copyFrom(keys.getPublic.getEncoded))
+          val request = CreateUserRequest().withUser(User(name, ByteString.copyFrom(keys.getPublic.getEncoded)))
           for {
-            _ <- env.stub.registerNameTask(request)
+            _ <- env.stub.createUserTask(request)
             step <- prompt(env.upgrade(Credentials(name, keys)))
           } yield step
         }
@@ -71,13 +71,14 @@ object Cli extends StrictLogging {
   }
 
   def prompt(env: AuthEnv): Task[Resumable] = {
-    println("available commands: [q]uit / [p]ost / [f]ollow")
+    println("available commands: [q]uit / [p]ost / [f]ollow / [s]stream")
     print(s"${AC.BOLD}>${AC.RESET} ")
     Prompt.defer { line =>
       line match {
         case "" => { unrecognised; prompt(env) }
         case _ if "post".startsWith(line) => post(env)
         case _ if "follow".startsWith(line) => follow(env)
+        case _ if "stream".startsWith(line) => stream(env)
         case _ if "quit".startsWith(line) => Task.now(Stop)
         case _ => { unrecognised; prompt(env) }
       }
@@ -88,8 +89,8 @@ object Cli extends StrictLogging {
     println("Compose your missive.")
     print(s"${AC.BOLD}[posting]>${AC.RESET} ")
     Prompt.defer { msg =>
-      Task.fromTry(Try(env.creds.sign(msg)))
-        .flatMap { signed => env.stub.sendMessageTask(SendMessageRequest(env.creds.name, msg, signed)) }
+      Task.fromTry(Try(env.creds.sign(msg.`utf-8`)).map(signed => Post(env.creds.name, msg, signed)))
+        .flatMap { post => env.stub.createPostTask(CreatePostRequest(Some(post))) }
         .flatMap{ _ =>
           println("Message successfully sent")
           println()
@@ -99,46 +100,53 @@ object Cli extends StrictLogging {
   }
 
   def follow(env: AuthEnv): Task[Resumable] = {
-    println("Enter a user to follow")
-    print(s"${AC.BOLD}[following]>${AC.RESET} ")
-    Prompt.defer { name => stream(env, name) }
+    println("Enter a user to follow.")
+    print(s"${AC.BOLD}[follow]>${AC.RESET} ")
+    Prompt.defer { name => 
+      val follower = env.creds.name
+      val sig = {
+        val frb = follower.`utf-8`
+        val feb = name.`utf-8`
+        val buf = java.nio.ByteBuffer.allocate(frb.size + feb.size + 1)
+        buf.put(frb).put(0: Byte).put(feb)
+        env.creds.sign(buf.array)
+      }
+      val req = CreateFollowRequest().withFollow(Follow("", follower, name, sig))
+      env.stub.createFollowTask(req).flatMap {_ => println(s"$name followed."); prompt(env) }
+    }
   }
 
-  def stream(env: AuthEnv, name: String): Task[Resumable] = {
+  def stream(env: AuthEnv): Task[Resumable] = {
     println("Streaming messages, press enter to interrupt")
     println()
-    val request = FollowRequest(name)
-    keyFor(env, name).flatMap { key =>
-      Task.create[ClientCallStreamObserver[FollowRequest]] { (s, cb) =>
-        val observer = new ClientResponseObserver[FollowRequest, FollowResponse] {
-          def beforeStart(cso: ClientCallStreamObserver[FollowRequest]) = cb.onSuccess(cso)
-          def onCompleted(): Unit = ()
-          def onError(ex: Throwable): Unit = {
-            ex match {
-              case StatusCancelled(_) => ()
-              case NonFatal(t) => logger.error(s"Error while following $name", t)
-            }
-          }
-          def onNext(response: FollowResponse): Unit = {
-            if (!Crypto.verify(key, response.msg.`utf-8`, response.signature.toByteArray))
-              throw new Exception(s"$name did not sign ${response.msg}")
-            println(s"@${response.name}")
-            println(response.msg)
-            println()
+    val request = StreamPostsRequest(Some(User(env.creds.name)))
+    val work = Task.create[ClientCallStreamObserver[StreamPostsRequest]] { (s, cb) =>
+      val stream = new ClientResponseObserver[StreamPostsRequest, Post] {
+        def beforeStart(cso: ClientCallStreamObserver[StreamPostsRequest]) = cb.onSuccess(cso)
+        def onCompleted(): Unit = ()
+        def onError(ex: Throwable): Unit = {
+          ex match {
+            case StatusCancelled(_) => ()
+            case NonFatal(t) => logger.error(s"Error while streaming", t)
           }
         }
-        env.stub.follow(request, observer)
-        Cancelable.empty
-      }.flatMap { observer =>
-        Prompt.defer { _ => observer.cancel("user cancelled", null); prompt(env) }
+        def onNext(post: Post): Unit = {
+          val handle = s"@${post.name}"
+          val work = env.stub.getPublicKey(post.name).map { optKey =>
+            optKey.map { key =>
+              if (!Crypto.verify(key, post.msg.`utf-8`, post.signature.toByteArray))
+                println(s"Post from $handle with bad signature")
+              else
+                println(s"@${handle}\n${post.msg}\n")
+            }.getOrElse(s"Post from $handle but no key found")
+          }
+          work.runAsync
+        }
       }
+      env.stub.streamPosts(request, stream)
+      Cancelable.empty
     }
-  }
-
-  def keyFor(env: AuthEnv, name: String): Task[PublicKey] = {
-    env.stub.getPublicKeyTask(PublicKeyRequest(name)).map { rep =>
-      Crypto.decodePublicKey(rep.publicKey.toByteArray)
-    }
+    work.flatMap { clientObs => Prompt.defer { _ => clientObs.cancel("user", null); prompt(env) } }
   }
 
   def unrecognised() = println("Input not recognised.")
