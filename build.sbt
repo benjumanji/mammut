@@ -27,7 +27,7 @@ lazy val `protocol` =
         "com.trueaccord.scalapb"     %% "scalapb-runtime-grpc"                  % SpbVersion.scalapbVersion,
         "com.typesafe.scala-logging" %% "scala-logging"                         % "3.8.0",
         "io.grpc"                    %  "grpc-netty"                            % SpbVersion.grpcJavaVersion,
-        "io.monix"                   %% "monix"                                 % "2.3.3",
+        "io.monix"                   %% "monix"                                 % "3.0.0-RC1",
         "org.bouncycastle"           %  "bcprov-jdk15on"                        % "1.59"
       )
     )

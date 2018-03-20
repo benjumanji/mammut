@@ -5,22 +5,17 @@ import com.typesafe.scalalogging.StrictLogging
 import com.google.protobuf.ByteString
 
 import io.grpc.{ Status, StatusRuntimeException }
-import io.grpc.stub.{ ClientCallStreamObserver, ClientResponseObserver }
 
 import monix.eval.Task
-import monix.execution.Cancelable
 import monix.execution.Scheduler.Implicits.global
 
 import scala.io.{ AnsiColor => AC }
 import scala.util.Try
-import scala.util.control.{ NonFatal, NoStackTrace }
 
 sealed trait Resumable
 case class Prompt(f: String => Task[Resumable]) extends Resumable
 case class Password(f: String => Task[Resumable]) extends Resumable
 case object Stop extends Resumable
-
-case object NoFollowException extends Exception("user cancelled") with NoStackTrace
 
 object StatusCancelled {
   def unapply(t: StatusRuntimeException) = {
@@ -120,33 +115,21 @@ object Cli extends StrictLogging {
     println("Streaming messages, press enter to interrupt")
     println()
     val request = StreamPostsRequest(Some(User(env.creds.name)))
-    val work = Task.create[ClientCallStreamObserver[StreamPostsRequest]] { (s, cb) =>
-      val stream = new ClientResponseObserver[StreamPostsRequest, Post] {
-        def beforeStart(cso: ClientCallStreamObserver[StreamPostsRequest]) = cb.onSuccess(cso)
-        def onCompleted(): Unit = ()
-        def onError(ex: Throwable): Unit = {
-          ex match {
-            case StatusCancelled(_) => ()
-            case NonFatal(t) => logger.error(s"Error while streaming", t)
-          }
-        }
-        def onNext(post: Post): Unit = {
-          val handle = s"@${post.name}"
-          val work = env.stub.getPublicKey(post.name).map { optKey =>
-            optKey.map { key =>
-              if (!Crypto.verify(key, post.msg.`utf-8`, post.signature.toByteArray))
-                println(s"Post from $handle with bad signature")
-              else
-                println(s"@${handle}\n${post.msg}\n")
-            }.getOrElse(s"Post from $handle but no key found")
-          }
-          work.runAsync
-        }
+    val posts = GrpcServerStreamObservable.apply[Post](o => env.stub.streamPosts(request, o))
+    val printing = posts.mapTask { post =>
+      val handle = s"@${post.name}"
+      val msg = env.stub.getPublicKey(post.name).map { optKey =>
+        optKey.map { key =>
+          if (!Crypto.verify(key, post.msg.`utf-8`, post.signature.toByteArray))
+            s"Post from $handle with bad signature"
+          else
+            s"$handle\n${post.msg}\n"
+        }.getOrElse(s"Post from $handle but no key found")
       }
-      env.stub.streamPosts(request, stream)
-      Cancelable.empty
+      msg.map(println)
     }
-    work.flatMap { clientObs => Prompt.defer { _ => clientObs.cancel("user", null); prompt(env) } }
+    val cancelable = printing.subscribe()
+    Prompt.defer { _ => cancelable.cancel; prompt(env) }
   }
 
   def unrecognised() = println("Input not recognised.")
