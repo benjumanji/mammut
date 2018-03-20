@@ -64,10 +64,7 @@ class Service extends MammutGrpc.Mammut with StrictLogging {
     subs.synchronized {
       subs.foreach { sub =>
         val (user, obs) = sub
-        if (obs.isCancelled) {
-          builder += sub
-        }
-        else if (following.synchronized { following.contains((user, post.name))}){
+        if (following.synchronized { following.contains((user, post.name))}){
           Try(obs.onNext(post)).failed.foreach { ex =>
             logger.error(s"[createPost/${user}] failed to push message", ex)
             obs.onError(ex)
@@ -82,9 +79,10 @@ class Service extends MammutGrpc.Mammut with StrictLogging {
 
   def streamPosts(request: StreamPostsRequest, observer: StreamObserver[Post]): Unit = {
     val user = request.user.getOrElse(missingField("user"))
-    Try(subs += ((user.name, observer.asInstanceOf[ServerCallStreamObserver[Post]]))).failed.foreach { ex =>
-      logger.error(s"failed to add ${user.name} to subs", ex)
-    }
+    val obs = observer.asInstanceOf[ServerCallStreamObserver[Post]]
+    val pair = (user.name, obs)
+    obs.setOnCancelHandler(new Runnable { def run = subs.synchronized { subs -= pair } })
+    subs += pair
   }
 
 }
