@@ -50,6 +50,14 @@ message CreateFollowRequest {
   Follow follow = 1;
 }
 
+message Event {
+  oneof event {
+    User user = 1;
+    Post post = 2;
+    Follow follow = 3;
+  }
+}
+
 service Mammut {
   rpc CreateUser(CreateUserRequest) returns (google.protobuf.Empty);
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
