@@ -12,7 +12,7 @@ import io.grpc.{
   Status
 }
 
-import monix.execution.Scheduler
+import monix.execution.{ Scheduler, UncaughtExceptionReporter }
 
 import scala.collection.mutable
 import scala.concurrent.Future
@@ -93,10 +93,16 @@ class Service(storage: Storage)(implicit c: okhttp3.OkHttpClient, s: Scheduler) 
   }
 }
 
-object Main extends App {
+object Main extends App with StrictLogging {
   implicit val client = new okhttp3.OkHttpClient()
-  implicit val scheduler = Scheduler.global
-  val storage = new InMemoryStorage
+  val cores = Runtime.getRuntime().availableProcessors()
+  val min = 2 * cores
+  val max = 2 * (cores + 1)
+
+  implicit val scheduler =
+    Scheduler.forkJoin(min, max, reporter = UncaughtExceptionReporter(logger.error("Top level exception", _)))
+
+  val storage = new RocksDBStorage
 
   val service = new Service(storage)
   val deliverTx = new DeliverTx(storage)
@@ -107,7 +113,7 @@ object Main extends App {
       .build()
   server.start
 
-  val tendermint = new MammutAbci(deliverTx)
+  val tendermint = new MammutAbci(deliverTx, storage)
   val tServer: Server = 
     ServerBuilder.forPort(46658)
       .addService(types.ABCIApplicationGrpc.bindService(tendermint, scheduler))

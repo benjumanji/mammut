@@ -4,6 +4,7 @@ import java.security.{
   KeyFactory,
   KeyPair,
   KeyPairGenerator,
+  MessageDigest,
   PublicKey,
   Signature
 }
@@ -31,6 +32,11 @@ object Crypto {
     signature.initVerify(key)
     signature.update(bytes)
     signature.verify(sig)
+  }
+
+  def digest(bytes: Array[Byte]): Array[Byte] = {
+    val sha = MessageDigest.getInstance("SHA-256")
+    sha.digest(bytes)
   }
 }
 

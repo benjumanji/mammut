@@ -16,7 +16,7 @@ class DeliverTx(storage: Storage) extends StrictLogging {
    * @param user The user to create.
    */
   def createUser(user: User): Unit = {
-    if (storage.storeUser(user))
+    if (!storage.storeUser(user))
       Status.ALREADY_EXISTS
         .augmentDescription(s"${user.name} already exists")
         .asException
@@ -34,6 +34,6 @@ class DeliverTx(storage: Storage) extends StrictLogging {
    * Create a post.
    * @param post The posr to create.
    */
-  def createPost(post: Post): Unit = ()
+  def createPost(post: Post): Unit = storage.storePost(post)
 
 }

@@ -1,5 +1,6 @@
 package com.grandcloud.mammut
 
+import com.google.protobuf.ByteString
 import com.grandcloud.mammut.protobuf._
 
 import scala.concurrent.Future
@@ -11,7 +12,7 @@ object CodeType {
   val BadNonce = 2;
 }
 
-class MammutAbci(deliverTx: DeliverTx) extends types.ABCIApplicationGrpc.ABCIApplication {
+class MammutAbci(deliverTx: DeliverTx, storage: Storage) extends types.ABCIApplicationGrpc.ABCIApplication {
 
   private def foldException(ex: Throwable): types.ResponseDeliverTx = {
     val message = Option(ex.getMessage).getOrElse("")
@@ -24,6 +25,7 @@ class MammutAbci(deliverTx: DeliverTx) extends types.ABCIApplicationGrpc.ABCIApp
   }
 
   def beginBlock(request: types.RequestBeginBlock): Future[types.ResponseBeginBlock] = {
+    storage.hash(request.hash.toByteArray)
     Future.successful(types.ResponseBeginBlock())
   }
 
@@ -54,6 +56,7 @@ class MammutAbci(deliverTx: DeliverTx) extends types.ABCIApplicationGrpc.ABCIApp
   }
 
   def endBlock(request: types.RequestEndBlock): Future[types.ResponseEndBlock] = {
+    storage.height(request.height)
     Future.successful(types.ResponseEndBlock())
   }
 
@@ -62,7 +65,11 @@ class MammutAbci(deliverTx: DeliverTx) extends types.ABCIApplicationGrpc.ABCIApp
   }
 
   def info(request: types.RequestInfo): Future[types.ResponseInfo] = {
-    Future.successful(types.ResponseInfo())
+    val rep = types.ResponseInfo()
+    val withHash = storage.hash.fold(rep) { h => rep.withLastBlockAppHash(ByteString.copyFrom(h)) }
+    val withHeight = storage.height.fold(withHash)(rep.withLastBlockHeight)
+    println(s"returning $withHeight")
+    Future.successful(withHeight)
   }
 
   def initChain(request: types.RequestInitChain): Future[types.ResponseInitChain] = {
