@@ -28,7 +28,7 @@ class Service()(implicit c: okhttp3.OkHttpClient, s: Scheduler) extends MammutGr
   val subs = mutable.Set.empty[(String, ServerCallStreamObserver[Post])]
 
   private def missingField[A](field: String): A = {
-    throw Status.INVALID_ARGUMENT.augmentDescription("follow is required").asRuntimeException
+    throw Status.INVALID_ARGUMENT.augmentDescription(s"$field is required").asRuntimeException
   }
 
   private def check(txResult: Transaction.TxResult): Try[Empty] = {
