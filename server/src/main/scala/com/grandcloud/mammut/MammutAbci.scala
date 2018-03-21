@@ -11,7 +11,7 @@ object CodeType {
   val BadNonce = 2;
 }
 
-class MammutAbci(service: Service) extends types.ABCIApplicationGrpc.ABCIApplication {
+class MammutAbci(deliverTx: DeliverTx) extends types.ABCIApplicationGrpc.ABCIApplication {
 
   private def foldException(ex: Throwable): types.ResponseDeliverTx = {
     val message = Option(ex.getMessage).getOrElse("")
@@ -39,9 +39,9 @@ class MammutAbci(service: Service) extends types.ABCIApplicationGrpc.ABCIApplica
   def deliverTx(request: types.RequestDeliverTx): Future[types.ResponseDeliverTx] = {
     val response = Try(Event.parseFrom(request.tx.toByteArray)).map { ev =>
       ev.event match {
-        case Event.Event.Post(post) => service.createPostInternal(post)
-        case Event.Event.User(user) => service.createUserInternal(user)
-        case Event.Event.Follow(follow) => service.createFollowInternal(follow)
+        case Event.Event.Post(post) => deliverTx.createPost(post)
+        case Event.Event.User(user) => deliverTx.createUser(user)
+        case Event.Event.Follow(follow) => deliverTx.createFollow(follow)
         case Event.Event.Empty =>
       }
       types.ResponseDeliverTx(CodeType.Ok)
