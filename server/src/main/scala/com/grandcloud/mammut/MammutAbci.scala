@@ -2,6 +2,7 @@ package com.grandcloud.mammut
 
 import com.google.protobuf.ByteString
 import com.grandcloud.mammut.protobuf._
+import com.typesafe.scalalogging.StrictLogging
 
 import scala.concurrent.Future
 import scala.util.Try
@@ -12,10 +13,12 @@ object CodeType {
   val BadNonce = 2;
 }
 
-class MammutAbci(deliverTx: DeliverTx, storage: Storage) extends types.ABCIApplicationGrpc.ABCIApplication {
+class MammutAbci(deliverTx: DeliverTx, storage: Storage) extends types.ABCIApplicationGrpc.ABCIApplication with StrictLogging {
 
   private def foldException(ex: Throwable): types.ResponseDeliverTx = {
+    logger.error("Exception while handling transaction", ex)
     val message = Option(ex.getMessage).getOrElse("")
+
     val code: io.grpc.Status.Code = ex match {
       case t: io.grpc.StatusException        => t.getStatus.getCode
       case t: io.grpc.StatusRuntimeException => t.getStatus.getCode
