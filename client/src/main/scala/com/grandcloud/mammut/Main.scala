@@ -1,30 +1,18 @@
 package com.grandcloud.mammut
 
-import com.google.protobuf.ByteString
 import com.grandcloud.mammut.protobuf.MammutGrpc
 
 import io.grpc.ManagedChannelBuilder
 
-import java.security.KeyPair
 import java.security.Security
-import java.security.Signature
 
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 
-import scala.concurrent.Await
+import scala.concurrent.{ Await, Future, blocking }
 import scala.concurrent.duration.Duration
 import scala.io.StdIn
-
-case class Credentials(name: String, pair: KeyPair) {
-  def sign(msg: Array[Byte]): ByteString = {
-    val signature = Signature.getInstance("SHA256withECDSA")
-    signature.initSign(pair.getPrivate)
-    signature.update(msg)
-    ByteString.copyFrom(signature.sign)
-  }
-}
 
 object Main extends App {
   val channel = ManagedChannelBuilder.forAddress("localhost", 9990).usePlaintext(true).build
@@ -33,14 +21,28 @@ object Main extends App {
   val provider = new BouncyCastleProvider()
   Security.addProvider(provider)
 
+  val console = System.console
+  val stdin = Task.deferFutureAction { s => Future(blocking(StdIn.readLine()))(s) }
+  val readpw = Task.deferFutureAction { s => Future(blocking(console.readPassword()))(s) }
+
   def loop(r: Resumable): Task[Unit] = {
     r match {
-      case Prompt(f) => {
-        val line = StdIn.readLine()
-        f(line).flatMap(loop)
-      }
+      case Prompt(f) => stdin.flatMap(f).flatMap(loop)
+      case Password(f) =>
+        for {
+          chars <- readpw
+          next <- f(chars)
+          _ = zero(chars)
+          rest <- loop(next)
+        } yield rest
       case Stop => Task.now(println("Exiting.."))
     }
+  }
+
+  def zero(pw: Array[Char]): Unit = {
+    val buf = java.nio.CharBuffer.allocate(pw.size)
+    buf.limit(buf.capacity)
+    buf.get(pw)
   }
 
   val cli = Cli(InitEnv(stub))

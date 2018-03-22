@@ -6,9 +6,10 @@ import java.security.{
   KeyPairGenerator,
   MessageDigest,
   PublicKey,
+  PrivateKey,
   Signature
 }
-import java.security.spec.X509EncodedKeySpec
+import java.security.spec.{ PKCS8EncodedKeySpec, X509EncodedKeySpec }
 
 import org.bouncycastle.jce.ECNamedCurveTable
 
@@ -25,6 +26,12 @@ object Crypto {
     val factory = KeyFactory.getInstance("EC", "BC")
     val spec = new X509EncodedKeySpec(bytes)
     factory.generatePublic(spec)
+  }
+
+  def decodePrivateKey(bytes: Array[Byte]): PrivateKey = {
+    val factory = KeyFactory.getInstance("EC", "BC")
+    val spec = new PKCS8EncodedKeySpec(bytes)
+    factory.generatePrivate(spec)
   }
 
   def verify(key: PublicKey, bytes: Array[Byte], sig: Array[Byte]): Boolean = {

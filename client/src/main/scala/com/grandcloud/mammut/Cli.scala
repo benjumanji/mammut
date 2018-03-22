@@ -1,9 +1,11 @@
 package com.grandcloud.mammut
 
+
 import com.grandcloud.mammut.protobuf._
 import com.typesafe.scalalogging.StrictLogging
 import com.google.protobuf.ByteString
 
+import java.nio.file.{ Path, Paths }
 import io.grpc.{ Status, StatusRuntimeException }
 
 import monix.eval.Task
@@ -14,7 +16,7 @@ import scala.util.Try
 
 sealed trait Resumable
 case class Prompt(f: String => Task[Resumable]) extends Resumable
-case class Password(f: String => Task[Resumable]) extends Resumable
+case class Password(f: Array[Char] => Task[Resumable]) extends Resumable
 case object Stop extends Resumable
 
 object StatusCancelled {
@@ -29,26 +31,67 @@ object Prompt {
 }
 
 case class InitEnv(stub: MammutGrpc.MammutStub) {
+  lazy val credsDir: Path = {
+    sys.env.get("MAMMUT_HOME").map(x => Paths.get(x)).getOrElse {
+      val ret = Paths.get(sys.props("user.home"), ".mammut")
+      println(s"using $ret for credentials. Override with ${AC.BOLD}MAMMUT_HOME${AC.RESET}")
+      ret
+    }
+  }
+  
   def upgrade(creds: Credentials): AuthEnv = AuthEnv(stub, creds)
 }
 
 case class AuthEnv(stub: MammutGrpc.MammutStub, creds: Credentials)
 
 object Cli extends StrictLogging {
-  def apply(env: InitEnv): Resumable  = {
-    println("available commands: [r]egister")
+  def apply(env: InitEnv): Resumable = {
+    println("available commands: [r]egister / use [e]xisting account")
     Prompt { line =>
       line.replaceAll("\\s+", "") match {
         case "" => { unrecognised; Task(apply(env)) }
         case _ if "register".startsWith(line) => registerUser(env)
+        case _ if "existing".startsWith(line) => loadUser(env)
       }
     }
   }
 
-  def registerUser(env: InitEnv): Task[Resumable] = {
+  def loadUser(env: InitEnv): Task[Resumable] = {
+    val credspath = env.credsDir
+    Credentials.list(credspath).map { accounts =>
+      accounts.size match {
+        case 0 =>
+          println("No accounts found. Please register instead.")
+          registerUserNow(env)
+        case _ =>
+          println("Available accounts:")
+          accounts.zipWithIndex.foreach { case (account, i) => println(s"[${i + 1}] $account") }
+          println("please select an account.")
+
+          Prompt { line =>
+            Try(line.replaceAll("\\s+$", "").toInt).map { selected =>
+              val index = selected - 1
+              if (accounts.isDefinedAt(index)) {
+                val account = accounts(index)
+                Credentials.get(credspath, account)
+                  .map(env.upgrade)
+                  .flatMap(prompt)
+              } else {
+                println(s"Account not available at index $selected")
+                loadUser(env)
+              }
+            }.getOrElse { println(s"Input not recognised as a number"); loadUser(env) }
+          }
+      }
+    }
+  }
+
+  def registerUser(env: InitEnv): Task[Resumable] = Task(registerUserNow(env))
+
+  def registerUserNow(env: InitEnv): Resumable = {
     println("Please supply a username (no spaces allowed / under 20 chars)")
     print(s"${AC.BOLD}[registering/username]>${AC.RESET} ")
-    Prompt.defer { name =>
+    Prompt { name =>
       name match {
         case _ if (name.size > 20) => { println("Username too long"); registerUser(env) }
         case _ if (name.exists(_.isSpaceChar)) => { println("User name contains spaces"); registerUser(env) }
@@ -58,7 +101,10 @@ object Cli extends StrictLogging {
           val request = CreateUserRequest().withUser(User(name, ByteString.copyFrom(keys.getPublic.getEncoded)))
           for {
             _ <- env.stub.createUserTask(request)
-            step <- prompt(env.upgrade(Credentials(name, keys)))
+            creds = Credentials(name, keys)
+            path = env.credsDir
+            _ <- creds.store(path)
+            step <- prompt(env.upgrade(creds))
           } yield step
         }
       }
@@ -134,4 +180,5 @@ object Cli extends StrictLogging {
 
   def unrecognised() = println("Input not recognised.")
   def streamingNotice() = { println("Streaming posts. Press [enter] for prompt."); println() }
+
 }
